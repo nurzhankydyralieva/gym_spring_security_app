@@ -11,7 +11,9 @@ import lombok.experimental.FieldDefaults;
 @AllArgsConstructor
 @FieldDefaults(level = AccessLevel.PRIVATE)
 public class TrainingTypeDTO {
-    Long id;
+
     @NotBlank
     String trainingType;
+
+
 }

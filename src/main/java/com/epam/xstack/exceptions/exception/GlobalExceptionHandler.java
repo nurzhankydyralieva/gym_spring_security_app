@@ -47,4 +47,12 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 .message(ex.getMessage())
                 .build()).build(), ex.getHttpStatus());
     }
+    @ExceptionHandler(UserNameNotExistsException.class)
+    public ResponseEntity<ErrorResponse> handleUserNameNotExistsException(UserNameNotExistsException ex) {
+        log.info("Null not allowed -  Exception: {}", ex.toString());
+        return new ResponseEntity<>(ErrorResponse.builder().error(Error.builder()
+                .code(ex.getCodeStatus())
+                .message(ex.getMessage())
+                .build()).build(), ex.getHttpStatus());
+    }
 }

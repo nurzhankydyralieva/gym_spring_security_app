@@ -4,6 +4,7 @@ import com.epam.xstack.aspects.authentication_aspects.annotations.Authentication
 import com.epam.xstack.configuration.JwtService;
 import com.epam.xstack.exceptions.exception.UserNameOrPasswordNotCorrectException;
 import com.epam.xstack.exceptions.generator.PasswordUserNameGenerator;
+import com.epam.xstack.exceptions.validator.UserNameCorrectValidation;
 import com.epam.xstack.mapper.authentication_mapper.AuthenticationChangeLoginRequestMapper;
 import com.epam.xstack.models.dto.authentication_dto.AuthenticationChangeLoginRequestDTO;
 import com.epam.xstack.models.dto.authentication_dto.AuthenticationChangeLoginResponseDTO;
@@ -25,12 +26,16 @@ import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
 import java.security.Principal;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 
 @Service
 @RequiredArgsConstructor
@@ -43,28 +48,68 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     private final JwtService jwtService;
     private final AuthenticationManager authenticationManager;
     private final AuthenticationChangeLoginRequestMapper requestMapper;
+    private final UserNameCorrectValidation userNameValidation;
+
+    private final Map<String, Integer> failedLoginAttempts = new ConcurrentHashMap<>();
+    private final Map<String, Long> blockedUsers = new ConcurrentHashMap<>();
 
     @Override
     public AuthenticationResponseDTO authenticate(AuthenticationRequestDTO request) {
-        authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        request.getUserName(),
-                        request.getPassword()
-                )
-        );
-        var traineeInDb = repository.findByUserName(request.getUserName()).orElseThrow();
-        var jwtToken = jwtService.generateToken(traineeInDb);
-        var refreshToken = jwtService.generateRefreshToken(traineeInDb);
-        revokeAllUserTokens(traineeInDb);
-        saveUserToken(traineeInDb, jwtToken);
-        return AuthenticationResponseDTO.builder()
-                .data("You are authenticated as user with username: " + traineeInDb.getUsername())
-                .code(Code.STATUS_200_OK)
-                .accessToken(jwtToken)
-                .refreshToken(refreshToken)
-                .build();
+
+
+        if (isUserBlocked(request.getUserName())) {
+            throw new RuntimeException("User is blocked due to too many unsuccessful login attempts.");
+        }
+
+        try {
+            authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            request.getUserName(),
+                            request.getPassword()
+                    )
+            );
+            var traineeInDb = repository.findByUserName(request.getUserName()).orElseThrow();
+            var jwtToken = jwtService.generateToken(traineeInDb);
+            var refreshToken = jwtService.generateRefreshToken(traineeInDb);
+            revokeAllUserTokens(traineeInDb);
+            saveUserToken(traineeInDb, jwtToken);
+            resetFailedLoginAttempts(request.getUserName());
+            return AuthenticationResponseDTO.builder()
+                    .data("You are authenticated as user with username: " + traineeInDb.getUsername())
+                    .code(Code.STATUS_200_OK)
+                    .accessToken(jwtToken)
+                    .refreshToken(refreshToken)
+                    .build();
+        } catch (AuthenticationException e) {
+            incrementFailedLoginAttempts(request.getUserName());
+            throw e;
+        }
     }
 
+
+    private boolean isUserBlocked(String username) {
+        Long blockExpirationTime = blockedUsers.get(username);
+        if (blockExpirationTime != null && blockExpirationTime > System.currentTimeMillis()) {
+            return true;
+        }
+        return false;
+    }
+
+    private void incrementFailedLoginAttempts(String username) {
+        int attempts = failedLoginAttempts.getOrDefault(username, 0) + 1;
+        failedLoginAttempts.put(username, attempts);
+        if (attempts >= 3) {
+            long blockExpirationTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5);
+            blockedUsers.put(username, blockExpirationTime);
+            failedLoginAttempts.remove(username);
+            userNameValidation.userNameExists(username);
+        }
+    }
+
+    private void resetFailedLoginAttempts(String username) {
+        failedLoginAttempts.remove(username);
+        blockedUsers.remove(username);
+    }
 
 
     @Override

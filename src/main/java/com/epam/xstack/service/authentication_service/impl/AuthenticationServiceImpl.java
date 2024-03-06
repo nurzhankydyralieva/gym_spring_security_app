@@ -31,7 +31,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
-import java.security.Principal;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -56,11 +55,9 @@ public class AuthenticationServiceImpl implements AuthenticationService {
     @Override
     public AuthenticationResponseDTO authenticate(AuthenticationRequestDTO request) {
 
-
         if (isUserBlocked(request.getUserName())) {
             throw new RuntimeException("User is blocked due to too many unsuccessful login attempts.");
         }
-
         try {
             authenticationManager.authenticate(
                     new UsernamePasswordAuthenticationToken(
@@ -85,32 +82,6 @@ public class AuthenticationServiceImpl implements AuthenticationService {
             throw e;
         }
     }
-
-
-    private boolean isUserBlocked(String username) {
-        Long blockExpirationTime = blockedUsers.get(username);
-        if (blockExpirationTime != null && blockExpirationTime > System.currentTimeMillis()) {
-            return true;
-        }
-        return false;
-    }
-
-    private void incrementFailedLoginAttempts(String username) {
-        int attempts = failedLoginAttempts.getOrDefault(username, 0) + 1;
-        failedLoginAttempts.put(username, attempts);
-        if (attempts >= 3) {
-            long blockExpirationTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5);
-            blockedUsers.put(username, blockExpirationTime);
-            failedLoginAttempts.remove(username);
-            userNameValidation.userNameExists(username);
-        }
-    }
-
-    private void resetFailedLoginAttempts(String username) {
-        failedLoginAttempts.remove(username);
-        blockedUsers.remove(username);
-    }
-
 
     @Override
     @AuthenticationChangeLoginAspectAnnotation
@@ -139,6 +110,30 @@ public class AuthenticationServiceImpl implements AuthenticationService {
                     .httpStatus(HttpStatus.UNAUTHORIZED)
                     .build();
         }
+    }
+
+    private boolean isUserBlocked(String username) {
+        Long blockExpirationTime = blockedUsers.get(username);
+        if (blockExpirationTime != null && blockExpirationTime > System.currentTimeMillis()) {
+            return true;
+        }
+        return false;
+    }
+
+    private void incrementFailedLoginAttempts(String username) {
+        int attempts = failedLoginAttempts.getOrDefault(username, 0) + 1;
+        failedLoginAttempts.put(username, attempts);
+        if (attempts >= 3) {
+            long blockExpirationTime = System.currentTimeMillis() + TimeUnit.MINUTES.toMillis(5);
+            blockedUsers.put(username, blockExpirationTime);
+            failedLoginAttempts.remove(username);
+            userNameValidation.userNameExists(username);
+        }
+    }
+
+    private void resetFailedLoginAttempts(String username) {
+        failedLoginAttempts.remove(username);
+        blockedUsers.remove(username);
     }
 
     private void saveUserToken(com.epam.xstack.models.entity.User user, String jwtToken) {

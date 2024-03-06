@@ -49,6 +49,7 @@ public class TrainerServiceImpl implements TrainerService {
     private final TrainerTrainingsListMapper trainerTrainingsListMapper;
     private final TrainerRegistrationRequestMapper registrationRequestMapper;
 
+
     @Override
     @SaveTraineeAspectAnnotation
     public TrainerRegistrationResponseDTO registerTrainer(TrainerRegistrationRequestDTO requestDTO) {
@@ -63,7 +64,6 @@ public class TrainerServiceImpl implements TrainerService {
         createTrainer.setPassword(passwordEncoder.encode(generatedPassword));
         createTrainer.setIsActive(true);
         createTrainer.setRole(Role.TRAINER);
-        // createTrainer.setSpecialization(TrainingTypeMapper.INSTANCE.toEntity(requestDTO.getSpecialization()));
 
         checkUserNameExistence.userNameExists(createdUserName);
 
